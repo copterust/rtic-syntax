@@ -10,15 +10,16 @@ mod util;
 
 use proc_macro2::TokenStream as TokenStream2;
 use syn::{
-    braced, parenthesized,
+    braced, bracketed, parenthesized,
     parse::{self, Parse, ParseStream, Parser},
+    punctuated::Punctuated,
     token::Brace,
-    Ident, Item, LitBool, LitInt, Token,
+    Ident, Item, LitBool, LitInt, PathArguments, Token,
 };
 
 use crate::{
     ast::{App, AppArgs, HardwareTaskArgs, InitArgs, MonotonicArgs, SoftwareTaskArgs},
-    Either, Settings,
+    Either, Map, Settings,
 };
 
 // Parse the app, both app arguments and body (input)
@@ -175,9 +176,63 @@ fn task_args(
                     }
 
                     // #ident
-                    let ident = content.parse()?;
+                    let mut cfgs = Map::new();
+                    let maybe_ident: Option<Ident> = content.parse().ok();
+                    match maybe_ident {
+                        Some(i) => {
+                            cfgs.insert(i, "".to_string());
+                        }
+                        None => {
+                            let inner;
+                            bracketed!(inner in content);
+                            for expr in inner
+                                .call(Punctuated::<syn::ExprTuple, Token![,]>::parse_terminated)?
+                            {
+                                if expr.elems.len() != 2 {
+                                    return Err(parse::Error::new(ident.span(), "Expected pair!"));
+                                }
+                                let first = expr.elems.first().unwrap();
+                                let second = expr.elems.last().unwrap();
 
-                    binds = Some(ident);
+                                let cfg_name = match first {
+                                    syn::Expr::Lit(syn::ExprLit {
+                                        lit: syn::Lit::Str(lit_str),
+                                        ..
+                                    }) => lit_str.value(),
+                                    _ => {
+                                        return Err(parse::Error::new(
+                                            ident.span(),
+                                            "First element of cfg-bind is not a cfg string!",
+                                        ));
+                                    }
+                                };
+                                let bind_to = match second {
+                                    syn::Expr::Path(syn::ExprPath { path, .. }) => {
+                                        if path.leading_colon.is_some()
+                                            || path.segments.len() != 1
+                                            || path.segments[0].arguments != PathArguments::None
+                                        {
+                                            return Err(parse::Error::new(
+                                                ident.span(),
+                                                "bind must be an identifier, not a path",
+                                            ));
+                                        } else {
+                                            path.segments[0].ident.clone()
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(parse::Error::new(
+                                            ident.span(),
+                                            "Second element of cfg-bind is not an Ident!",
+                                        ));
+                                    }
+                                };
+                                cfgs.insert(bind_to, cfg_name);
+                            }
+                        }
+                    };
+
+                    binds = Some(cfgs);
                 }
 
                 "capacity" => {

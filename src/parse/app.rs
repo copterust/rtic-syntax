@@ -154,14 +154,25 @@ impl App {
         let mut bindings = HashSet::<Ident>::new();
         let mut monotonic_types = HashSet::<Type>::new();
 
-        let mut check_binding = |ident: &Ident| {
-            if bindings.contains(ident) {
-                return Err(parse::Error::new(
-                    ident.span(),
-                    "this interrupt is already bound",
-                ));
-            } else {
-                bindings.insert(ident.clone());
+        //         let mut check_binding = |ident: &Ident| {
+        //             if bindings.contains(ident) {
+        //                 return Err(parse::Error::new(
+        //                     ident.span(),
+        //                     "this interrupt is already bound",
+        //                 ));
+        //             } else {
+        //                 bindings.insert(ident.clone());
+        // =======
+        let mut check_binding = |ident: &Map<String>| {
+            for (bind, _) in ident.iter() {
+                if bindings.contains(bind) {
+                    return Err(parse::Error::new(
+                        bind.span(),
+                        "a task has already been bound to this interrupt",
+                    ));
+                } else {
+                    bindings.insert(bind.clone());
+                }
             }
 
             Ok(())
@@ -448,8 +459,10 @@ impl App {
                         check_monotonic(&*type_item.ty)?;
 
                         let args = MonotonicArgs::parse(type_item.attrs.remove(pos).tokens)?;
-
-                        check_binding(&args.binds)?;
+                        // tmp:
+                        let mut cfgs = Map::new();
+                        cfgs.insert(args.binds.clone(), "".to_string());
+                        check_binding(&cfgs)?;
 
                         let monotonic = Monotonic::parse(args, type_item, span)?;
 

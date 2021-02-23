@@ -295,8 +295,8 @@ pub struct HardwareTask {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct HardwareTaskArgs {
-    /// The interrupt or exception that this task is bound to
-    pub binds: Ident,
+    /// The interrupt/exception->feature that this task is bound to
+    pub binds: Map<String>,
 
     /// The priority of this task
     pub priority: u8,
